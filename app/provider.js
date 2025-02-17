@@ -19,7 +19,7 @@ function Provider({ children }) {
             user: user,
           });
           setUserDetails(response.data);
-          console.log("Verified User:", response.data); 
+          // console.log("Verified User:", response.data); 
         } catch (error) {
           console.error("Error verifying user:", error);
         }
