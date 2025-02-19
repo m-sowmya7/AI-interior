@@ -1,11 +1,37 @@
-import React from 'react'
+"use client"
+import { useUser } from '@clerk/clerk-react';
+import React, { useState } from 'react';
+import { Button } from "@heroui/react";
+import EmptyState from './EmptyState';
+
 
 function List() {
+  const { user } = useUser();
+  const [userRoomList, setUserRoomList] = useState([]);
+  // Log the user object to see if it has the expected properties
+  // console.log('User object:', user);
+
   return (
     <div>
-      List
+      <div className='flex items-center justify-between gap-2'>
+        <h2 className='font-bold text-3xl'>
+          Hello, {user?.fullName || 'Guest'}
+        </h2>
+        <Button color="primary" variant="shadow" className="border rounded p-2 hover:shadow-lg">
+          + Design Room
+        </Button>
+      </div>
+
+      {userRoomList?.length === 0 ? (
+        <EmptyState />
+      ) : (
+        <div>
+          {/* Render your content here */}
+        </div>
+      )}
+
     </div>
-  )
+  );
 }
 
-export default List
+export default List;
