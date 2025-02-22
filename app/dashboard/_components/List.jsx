@@ -3,6 +3,7 @@ import { useUser } from '@clerk/clerk-react';
 import React, { useState } from 'react';
 import { Button } from "@heroui/react";
 import EmptyState from './EmptyState';
+import Link from 'next/link';
 
 
 function List() {
@@ -17,9 +18,12 @@ function List() {
         <h2 className='font-bold text-3xl'>
           Hello, {user?.fullName || 'Guest'}
         </h2>
-        <Button color="primary" variant="shadow" className="border rounded p-2 hover:shadow-lg">
-          + Design Room
-        </Button>
+        <Link href={'/dashboard/newDesign'}>
+          <Button color="primary" variant="shadow" className="border rounded p-2 hover:shadow-lg">
+            + Design Room
+          </Button>
+        </Link>
+
       </div>
 
       {userRoomList?.length === 0 ? (
