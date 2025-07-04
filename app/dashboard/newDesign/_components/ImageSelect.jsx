@@ -1,34 +1,57 @@
 "use client";
 import Image from "next/image";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useRef, useState } from "react";
+import { createClient } from "@supabase/supabase-js";
 
-function ImageSelect({ onImageSelect }) {  // Accept callback as prop
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+function ImageSelect({ onImageSelect }) {
     const defaultImage = "/imageUpload.png";
-    const [file, setFile] = useState(null);
+    const [fileUrl, setFileUrl] = useState(null);
+    const [uploading, setUploading] = useState(false);
     const fileInputRef = useRef(null);
 
-    useEffect(() => {
-        const storedImage = localStorage.getItem("uploadedImage");
-        if (storedImage) {
-            setFile(storedImage);
-            onImageSelect(storedImage);  // Pass stored image to parent on load
-        }
-    }, []);
-
-    const onFileSelected = (event) => {
+    const onFileSelected = async (event) => {
         const selectedFile = event.target.files[0];
-        if (selectedFile) {
-            const imageUrl = URL.createObjectURL(selectedFile);
-            setFile(imageUrl);
-            localStorage.setItem("uploadedImage", imageUrl);
-            onImageSelect(imageUrl);  // Pass new image URL to parent
+        if (!selectedFile) return;
+
+        setUploading(true);
+
+        const fileExt = selectedFile.name.split('.').pop();
+        const fileName = `${Date.now()}.${fileExt}`;
+        const filePath = `uploads/${fileName}`; // Folder path inside 'images' bucket
+
+        // Upload to Supabase Storage
+        const { error } = await supabase.storage
+            .from("images")
+            .upload(filePath, selectedFile, {
+                cacheControl: "3600",
+                upsert: false,
+            });
+
+        if (error) {
+            alert("Upload failed: " + error.message);
+            setUploading(false);
+            return;
         }
+
+        // Get the public URL of the uploaded file
+        const { data } = supabase.storage
+            .from("images")
+            .getPublicUrl(filePath);
+
+        setFileUrl(data.publicUrl);
+        onImageSelect(data.publicUrl);
+        setUploading(false);
     };
 
+
     const resetImage = () => {
-        setFile(null);
-        localStorage.removeItem("uploadedImage");
-        onImageSelect(null);  // Notify parent that image is reset
+        setFileUrl(null);
+        onImageSelect(null);
     };
 
     return (
@@ -43,7 +66,7 @@ function ImageSelect({ onImageSelect }) {  // Accept callback as prop
                 onClick={() => fileInputRef.current?.click()}
             >
                 <Image
-                    src={file || defaultImage}
+                    src={fileUrl || defaultImage}
                     width={300}
                     height={300}
                     alt="upload-image"
@@ -57,8 +80,9 @@ function ImageSelect({ onImageSelect }) {  // Accept callback as prop
                 ref={fileInputRef}
                 style={{ display: "none" }}
                 onChange={onFileSelected}
+                disabled={uploading}
             />
-            {file && (
+            {fileUrl && (
                 <button
                     onClick={resetImage}
                     className="mt-4 px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600"
@@ -66,6 +90,7 @@ function ImageSelect({ onImageSelect }) {  // Accept callback as prop
                     Reset Image
                 </button>
             )}
+            {uploading && <div className="mt-2 text-blue-500">Uploading...</div>}
         </div>
     );
 }
