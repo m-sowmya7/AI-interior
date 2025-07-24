@@ -2,22 +2,50 @@
 convert output url ro BASE64 image
 save BASE64 to supabase
 save all to the database*/
+import dotenv from 'dotenv';
+dotenv.config();
 import { NextResponse } from "next/server";
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import { createClient } from "@supabase/supabase-js";
 
-// Supabase
+// Supabase client
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 );
 
-// Gemini
+const apiKey = process.env.PERSONAL_AI_API_KEY;
 
-const genAI = new GoogleGenerativeAI({
-  apiKey: process.env.GEMINI_API_KEY,
-});
+const MAX_RETRIES = 3;
+const RETRY_DELAY_MS = 3000; // 3 seconds
 
+async function fetchAIImageWithRetry(payload, retries = MAX_RETRIES) {
+  for (let i = 0; i < retries; i++) {
+    const aiResponse = await fetch("https://ai-api.kandregulasujith.workers.dev/images/transform", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": apiKey 
+      },
+      body: JSON.stringify(payload)
+    });
+
+    const result = await aiResponse.json();
+
+    if (result.success && result.data?.url) {
+      return result;
+    }
+
+    if (result.error?.code === "TRANSFORMATION_ERROR") {
+      console.warn(`⚠️ Retry ${i + 1}/${retries} - AI API over capacity`);
+      await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS));
+      continue;
+    }
+
+    throw new Error(`AI API failed: ${JSON.stringify(result)}`);
+  }
+
+  throw new Error("AI API failed after retries due to capacity issues.");
+}
 
 export async function POST(req) {
   try {
@@ -30,62 +58,54 @@ export async function POST(req) {
       throw new Error("Missing one or more required fields.");
     }
 
+    // Step 1: Fetch image and convert to base64
     const imageResponse = await fetch(imageUrl);
     if (!imageResponse.ok) throw new Error("Failed to fetch image from Supabase");
 
     const arrayBuffer = await imageResponse.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-    const base64Image = buffer.toString("base64");
+    const base64Image = Buffer.from(arrayBuffer).toString("base64");
 
+    // Step 2: Prepare AI API prompt
+    const prompt = `Transform this ${roomType} into a ${designType} style. Additional instructions: ${requirements}`;
+    const aiPayload = {
+      inputImageBase64: base64Image,
+      prompt,
+      width: 512,
+      height: 512,
+      steps: 20,
+      guidance: 7.5
+    };
 
-    const prompt = `Convert this into a ${designType} ${roomType}. Requirements: ${requirements}`;
+    // Step 3: Call AI API with retry
+    const aiResult = await fetchAIImageWithRetry(aiPayload);
+    console.log("✅ AI image transformation successful:", aiResult.data.url);
 
-    const model = genAI.getGenerativeModel({
-      model: "gemini-pro-vision",
-    });
+    // Step 4: Convert output image URL to base64
+    const transformedImgResponse = await fetch(aiResult.data.url);
+    const transformedBuffer = Buffer.from(await transformedImgResponse.arrayBuffer());
 
-    const result = await model.generateContent({
-      contents: [
-        { text: prompt },
-        {
-          inlineData: {
-            mimeType: "image/png",
-            data: base64Image,
-          },
-        },
-      ],
-      generationConfig: {
-        response_mime_type: "image/png",
-      },
-    });
-
-    const generatedImagePart = result?.response?.candidates?.[0]?.content?.parts?.find(
-      (part) => part.inlineData
-    );
-
-    if (!generatedImagePart) throw new Error("Gemini did not return an image.");
-
-    const generatedBase64 = generatedImagePart.inlineData.data;
-    const generatedBuffer = Buffer.from(generatedBase64, "base64");
-
-    // Step 3: Upload to Supabase
+    // Step 5: Upload final image to Supabase
     const filename = `generated/${Date.now()}.png`;
-    const { error: uploadError, data } = await supabase.storage
+    const { error: uploadError } = await supabase.storage
       .from("images")
-      .upload(filename, generatedBuffer, {
+      .upload(filename, transformedBuffer, {
         contentType: "image/png",
         cacheControl: "3600",
       });
 
-    if (uploadError) {
-      console.error("❌ Supabase upload error:", uploadError);
-      throw uploadError;
+    if (uploadError) throw uploadError;
+
+    // Step 6: Get public URL
+    const { data: publicUrlData, error: publicUrlError } = supabase.storage
+      .from("images")
+      .getPublicUrl(filename);
+
+    if (publicUrlError || !publicUrlData?.publicUrl) {
+      throw new Error("Failed to retrieve public URL from Supabase.");
     }
 
-    const { publicUrl } = supabase.storage.from("images").getPublicUrl(filename);
-    console.log("✅ Upload complete. Public URL:", publicUrl);
-
-    return NextResponse.json({ url: publicUrl });
+    console.log("✅ Upload complete. Public URL:", publicUrlData.publicUrl);
+    return NextResponse.json({ url: publicUrlData.publicUrl });
 
   } catch (err) {
     console.error("❌ Error in redesign-room:", err);

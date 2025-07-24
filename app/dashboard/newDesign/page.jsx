@@ -6,9 +6,11 @@ import ImageSelect from './_components/ImageSelect'
 import RoomType from './_components/RoomType'
 import DesignType from './_components/DesignType'
 import AdditionalReq from './_components/AdditionalReq'
+import { useRouter } from 'next/navigation';
+
 
 function CreateNew() {
-
+    const router = useRouter();
     const [formData, setFormData] = useState([]);
     const onHandleInputChange = (value, fieldName) => {
         setFormData(prev => ({
@@ -18,6 +20,12 @@ function CreateNew() {
 
         console.log(formData);
     }
+    // const [formData, setFormData] = useState({
+    //     image: null,
+    //     roomType: "",
+    //     design: "",
+    //     requirements: ""
+    // });
 
     const GenerateAiImage = async () => {
         console.log("formData before API call:", formData);
@@ -33,10 +41,24 @@ function CreateNew() {
                 requirements: formData.requirements
             });
             console.log(result.data);
+            router.push('/dashboard');
         } catch (err) {
             console.error("API error:", err.response?.data || err.message);
         }
     };
+    
+
+    // const toBase64 = (file) => {
+    //     return new Promise((resolve, reject) => {
+    //         const reader = new FileReader();
+    //         reader.readAsDataURL(file);  // reads file as base64
+    //         reader.onload = () => {
+    //             const base64 = reader.result.split(',')[1];  // remove "data:image/png;base64," part
+    //             resolve(base64);
+    //         };
+    //         reader.onerror = reject;
+    //     });
+    // };
 
 
     return (
